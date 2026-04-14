@@ -31,11 +31,13 @@ import importlib
 from helpers.helpers import BaseArgs
 from modules.graphql.graphql import PtGraphQL
 from modules.soap.soap import PtSOAP
+from modules.xmlrpc.xmlrpc import PtXMLRPC
 from modules.common_tests.common_tests import CommonTests
 
 MODULES = {
     "graphql": PtGraphQL,
-    "soap": PtSOAP
+    "soap": PtSOAP,
+    "xmlrpc": PtXMLRPC
 }
 
 class PtAPI:

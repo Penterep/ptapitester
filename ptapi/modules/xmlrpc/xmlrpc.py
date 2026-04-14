@@ -1,6 +1,5 @@
 import argparse
 import sys
-import json
 from argparse import Namespace
 from io import StringIO
 
@@ -18,10 +17,10 @@ from ptlibs.ptprinthelper import ptprint
 
 
 global SCRIPTNAME
-SCRIPTNAME = "soap"
+SCRIPTNAME = "xmlrpc"
 
 
-class SOAPArgs(Namespace):
+class XMLRPCArgs(Namespace):
     def get_help(self):
         def _get_available_modules_help() -> list:
             rows = []
@@ -34,11 +33,11 @@ class SOAPArgs(Namespace):
             return sorted(rows, key=lambda x: x[2])
 
         return [
-            {"description": ["SOAP API security testing module"]},
-            {"usage": ["SOAP <options>"]},
+            {"description": ["XML-RPC API security testing module"]},
+            {"usage": ["XMLRPC <options>"]},
             {"usage_example": [
-                "ptapi SOAP -u https://www.example.com/service",
-                "ptapi SOAP -u https://www.example.com -ts wsdl_exposure",
+                "ptapi XMLRPC -u https://www.example.com/xmlrpc.php",
+                "ptapi XMLRPC -u https://www.example.com -ts introspection",
             ]},
             {"options": [
                 ["-u", "--url", "<url>", "Connect to URL"],
@@ -70,7 +69,7 @@ class SOAPArgs(Namespace):
         parser.add_argument("-ts", "--tests", type=lambda s: s.lower(), nargs="+")
         parser.add_argument("-c", "--cookie", type=str)
         parser.add_argument("-H", "--headers", type=ptmisclib.pairs, nargs="+",
-                            default={"Content-Type": "text/xml; charset=utf-8"})
+                            default={"Content-Type": "text/xml"})
         parser.add_argument("-r", "--redirects", action="store_true")
         parser.add_argument("-C", "--cache", action="store_true")
         parser.add_argument("-v", "--version", action='version',
@@ -83,10 +82,10 @@ class SOAPArgs(Namespace):
         return parser
 
 
-class PtSOAP:
+class PtXMLRPC:
     @staticmethod
     def module_args():
-        return SOAPArgs()
+        return XMLRPCArgs()
 
     def __init__(self, args, common_tests: object):
         self.ptjsonlib = ptjsonlib.PtJsonLib()
@@ -98,22 +97,16 @@ class PtSOAP:
                                http_client=self.http_client)
         self.common_tests = common_tests
 
-        # Activate ThreadLocalStdout
         self.thread_local_stdout = ThreadLocalStdout(sys.stdout)
         self.thread_local_stdout.activate()
 
     def _initialize_scan(self):
-        """Resolve WSDL endpoint, extract operations, create JSON node."""
-        # Resolve target endpoint from WSDL
-        self.helpers.resolve_target_endpoint()
-
-        # Extract operations from WSDL
-        operations = self.helpers.extract_operations_from_wsdl()
-
+        """Create JSON node for the XML-RPC API."""
         # Create JSON node
-        node = self.ptjsonlib.create_node_object("soap_api")
+        node = self.ptjsonlib.create_node_object("xmlrpc_api")
         self.helpers.node_key = node.get("key")
         self.ptjsonlib.add_node(node)
+
         self.ptjsonlib.add_properties(
             properties={"url": self.helpers.endpoint_url},
             node_key=self.helpers.node_key
@@ -121,31 +114,40 @@ class PtSOAP:
 
         ptprint(f"Target endpoint: {self.helpers.endpoint_url}", "INFO",
                 not self.args.json, indent=4)
-        if operations:
-            ptprint(f"WSDL operations: {', '.join(operations)}", "INFO",
-                    not self.args.json, indent=4)
         ptprint(" ", "TEXT", not self.args.json)
 
     def run(self) -> None:
-        """Main method — orchestrates SOAP security testing."""
-
-        # Initialize: resolve WSDL, extract operations, create node
+        """Main method — orchestrates XML-RPC security testing."""
         self._initialize_scan()
 
-        # Common tests (CORS, HTTPS, Origin, Headers) are run by ptapi.py
-        # before this module is called — no need to run them here.
-
-        # Get list of SOAP-specific tests to run
         tests = self.args.tests or _get_all_available_modules()
 
-        # Run SOAP-specific test modules
+        # Introspection must run first — other tests depend on discovered methods
+        if "introspection" in tests:
+            tests.remove("introspection")
+            self.run_single_module("introspection")
+
+        # Undocumented methods must run before undocumented parameters
+        # (parameters test uses found undocumented methods)
+        if "undocumented_methods" in tests:
+            tests.remove("undocumented_methods")
+            self.run_single_module("undocumented_methods")
+
+        if "undocumented_parameters" in tests:
+            tests.remove("undocumented_parameters")
+
+        # Run remaining tests in parallel
         self.ptthreads.threads(tests, self.run_single_module, self.args.threads)
+
+        # Run undocumented parameters last (needs undocumented_methods results)
+        if self.args.tests is None or "undocumented_parameters" in (self.args.tests or []):
+            self.run_single_module("undocumented_parameters")
 
         self.ptjsonlib.set_status("finished")
         ptprint(self.ptjsonlib.get_result_json(), "", self.args.json)
 
     def run_single_module(self, module_name: str) -> None:
-        """Dynamically loads and executes a SOAP test module."""
+        """Dynamically loads and executes an XML-RPC test module."""
         try:
             with self._lock:
                 module = _import_module_from_path(module_name)
@@ -171,7 +173,6 @@ class PtSOAP:
             else:
                 ptprint(f"Module '{module_name}' does not have 'run' function",
                         "WARNING", not self.args.json)
-
         except FileNotFoundError:
             ptprint(f"Module '{module_name}' not found", "ERROR", not self.args.json)
         except Exception as e:
@@ -192,16 +193,15 @@ def _import_module_from_path(module_name: str) -> ModuleType:
 
 def _get_all_available_modules() -> list:
     modules_folder = os.path.join(os.path.dirname(__file__), "modules")
-    available_modules = [
+    return [
         f.rsplit(".py", 1)[0]
         for f in sorted(os.listdir(modules_folder))
         if f.endswith(".py") and not f.startswith("_")
     ]
-    return available_modules
 
 
 def main(args: Namespace, common_tests: object):
     global SCRIPTNAME
-    SCRIPTNAME = "soap"
-    script = PtSOAP(args, common_tests)
+    SCRIPTNAME = "xmlrpc"
+    script = PtXMLRPC(args, common_tests)
     script.run()
