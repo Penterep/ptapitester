@@ -29,23 +29,27 @@ class Helpers:
         if headers is None:
             headers = {"Content-Type": "text/xml"}
 
-        try:
-            r = self.http_client.send_request(
-                url=url, method="POST", data=data,
-                headers=headers, merge_headers=False, allow_redirects=True
-            )
-            if r.status_code == 429:
-                ptprint("Rate limit hit, backing off 11s...", "INFO",
-                        not self.args.json, indent=4)
-                time.sleep(11)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
                 r = self.http_client.send_request(
                     url=url, method="POST", data=data,
                     headers=headers, merge_headers=False, allow_redirects=True
                 )
-            return r
-        except Exception as e:
-            ptprint(f"Request failed: {e}", "WARNING", not self.args.json, indent=4)
-            return None
+                if r.status_code == 429:
+                    wait = 5 * (attempt + 1)
+                    ptprint(f"Rate limit hit, backing off {wait}s...", "INFO",
+                            not self.args.json, indent=4)
+                    time.sleep(wait)
+                    continue
+                return r
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    ptprint(f"Request failed after {max_retries} attempts: {e}",
+                            "WARNING", not self.args.json, indent=4)
+        return None
 
     def get_xmlrpc_proxy(self):
         """Get xmlrpc.client.ServerProxy for the endpoint."""

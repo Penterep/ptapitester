@@ -21,6 +21,11 @@ class Helpers:
         self.known_operations = []
         self.node_key = None
 
+        # Full WSDL parsed data (populated by wsdl_exposure module)
+        self.parsed_services = []
+        self.parsed_operations = []
+        self.type_definitions = {}
+
     def print_header(self, test_label):
         ptprint(f"Testing: {test_label}", "TITLE", not self.args.json, colortext=True)
 
@@ -29,31 +34,44 @@ class Helpers:
             url = self.endpoint_url
         if headers is None:
             headers = {"Content-Type": "text/xml; charset=utf-8"}
-        try:
-            r = self.http_client.send_request(
-                url=url, method="POST", data=data,
-                headers=headers, merge_headers=False, allow_redirects=True
-            )
-            if r.status_code == 429:
-                ptprint("Rate limit hit, backing off 11s...", "INFO", not self.args.json, indent=4)
-                time.sleep(11)
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
                 r = self.http_client.send_request(
                     url=url, method="POST", data=data,
                     headers=headers, merge_headers=False, allow_redirects=True
                 )
-            return r
-        except Exception as e:
-            ptprint(f"Request failed: {e}", "WARNING", not self.args.json, indent=4)
-            return None
+                if r.status_code == 429:
+                    wait = 5 * (attempt + 1)
+                    ptprint(f"Rate limit hit, backing off {wait}s...", "INFO",
+                            not self.args.json, indent=4)
+                    time.sleep(wait)
+                    continue
+                return r
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    ptprint(f"Request failed after {max_retries} attempts: {e}",
+                            "WARNING", not self.args.json, indent=4)
+        return None
 
     def send_get_request(self, url=None):
         if url is None:
             url = self.endpoint_url
-        try:
-            return self.http_client.send_request(url=url, method="GET", allow_redirects=True)
-        except Exception as e:
-            ptprint(f"GET request failed: {e}", "WARNING", not self.args.json, indent=4)
-            return None
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return self.http_client.send_request(url=url, method="GET", allow_redirects=True)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(2 * (attempt + 1))
+                else:
+                    ptprint(f"GET request failed after {max_retries} attempts: {e}",
+                            "WARNING", not self.args.json, indent=4)
+        return None
 
     def resolve_target_endpoint(self):
         ptprint("Resolving SOAP endpoint from WSDL...", "INFO", not self.args.json, indent=4)

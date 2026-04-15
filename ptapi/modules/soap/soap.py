@@ -138,7 +138,13 @@ class PtSOAP:
         # Get list of SOAP-specific tests to run
         tests = self.args.tests or _get_all_available_modules()
 
-        # Run SOAP-specific test modules
+        # WSDL exposure/parsing must run first — other tests depend on
+        # parsed operations, parameters and type definitions
+        if "wsdl_exposure" in tests:
+            tests.remove("wsdl_exposure")
+            self.run_single_module("wsdl_exposure")
+
+        # Run remaining SOAP-specific test modules
         self.ptthreads.threads(tests, self.run_single_module, self.args.threads)
 
         self.ptjsonlib.set_status("finished")
