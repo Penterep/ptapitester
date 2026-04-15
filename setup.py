@@ -1,13 +1,13 @@
 import setuptools
 
-with open("ptapi/_version.py") as f:
+with open("ptapitester/_version.py") as f:
     __version__ = f.readline().split('"')[1]
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="ptapi",
+    name="ptapitester",
     description="API penetration testing tool (Penterep tool)",
     version=__version__,
     author="Penterep",
@@ -27,13 +27,13 @@ setuptools.setup(
         "ptlibs>=1.0.25",
         "ptthreads"
 ],
-    entry_points={"console_scripts": ["ptapi = ptapi.ptapi:main"]},
+    entry_points={"console_scripts": ["ptapitester = ptapitester.ptapitester:main"]},
     include_package_data=True,
     long_description=long_description,
     long_description_content_type="text/markdown",
     project_urls = {
         "homepage": "https://www.penterep.com/",
-        "repository": "https://github.com/Penterep/ptapi",
-        "tracker": "https://github.com/Penterep/ptapi/issues"
+        "repository": "https://github.com/Penterep/ptapitester",
+        "tracker": "https://github.com/Penterep/ptapitester/issues"
     }
 )

@@ -42,7 +42,7 @@ class Origin:
         if not cc_headers:
             ptprint("The host does not implement a cache-control policy", "VULN", not self.args.json,
                     indent=self.base_indent+4)
-            self.ptjsonlib.add_vulnerability("PTV-PTAPI-CACHE-CONTROL")
+            self.ptjsonlib.add_vulnerability("PTV-PTAPITESTER-CACHE-CONTROL")
             return
 
         ptprint(f"Cache-Control headers: {cc_headers}", "ADDITIONS", self.args.verbose, indent=self.base_indent+4,
@@ -52,7 +52,7 @@ class Origin:
         if not any(cc_headers.intersection({"no-cache", "no-store", "must-revalidate"})):
             ptprint("The host enforces an insecure cache-control policy", "VULN", not self.args.json,
                     indent=self.base_indent+4)
-            self.ptjsonlib.add_vulnerability("PTV-PTAPI-CACHE-CONTROL")
+            self.ptjsonlib.add_vulnerability("PTV-PTAPITESTER-CACHE-CONTROL")
         else:
             ptprint("The host enforces a secure cache-control policy", "OK", not self.args.json,
                     indent=self.base_indent+4)

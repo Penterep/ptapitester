@@ -35,7 +35,7 @@ class DoS:
         # You can use your helper functions:
         self.helpers.sample_helper()
 
-        # You can execute common API tests from the ptapi.common_tests module:
+        # You can execute common API tests from the ptapitester.common_tests module:
         self.common_tests.run()
 
         # You can add vulnerabilities:

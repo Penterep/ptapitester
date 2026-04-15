@@ -38,7 +38,7 @@ MODULES = {
     "soap": PtSOAP
 }
 
-class PtAPI:
+class PtApitester:
     def __init__(self, args: Namespace, base_request) -> None:
         self.args = args
         self.base_request = base_request
@@ -70,11 +70,11 @@ def get_help():
                   available command-line flags and dynamically discovered test modules.
         """
     return [
-        {"description": ["PTAPI"]},
-        {"usage": ["ptapi [API_TYPE] <options>"]},
+        {"description": ["PTAPITESTER"]},
+        {"usage": ["ptapitester [API_TYPE] <options>"]},
         {"usage_example": [
-            "ptapi -u https://www.example.com",
-            "ptapi GRAPHQL -u https://www.example.com -ts introspection"
+            "ptapitester -u https://www.example.com",
+            "ptapitester GRAPHQL -u https://www.example.com -ts introspection"
         ]},
         {"options": [
             ["GRAPHQL", "<options>", "", "GraphQL testing module"],
@@ -128,7 +128,7 @@ def parse_args():
         ptprinthelper.print_banner(SCRIPTNAME, __version__, False)
         print(f"\n\033[31m[✗]\033[0m Error: Unknown module '{sys.argv[1]}'")
         print(f"\nAvailable modules: {', '.join(MODULES.keys())}")
-        print(f"\nUse 'ptapi -h' for help.\n")
+        print(f"\nUse 'ptapitester -h' for help.\n")
         sys.exit(2)
 
     # Case 3: Help flag present
@@ -315,9 +315,9 @@ def parse_args():
 
 def main():
     global SCRIPTNAME
-    SCRIPTNAME = "ptapi"
+    SCRIPTNAME = "ptapitester"
     args, base_request = parse_args()
-    script = PtAPI(args, base_request)
+    script = PtApitester(args, base_request)
     script.run()
 
 
