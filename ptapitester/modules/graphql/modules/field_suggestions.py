@@ -204,7 +204,7 @@ class FieldSuggestions:
             if not response_json:
                 break
 
-            fields.update(self._find_fields(response_json, len(chunk), parts, idt))
+            fields.update(self._find_fields(response_json, parts, idt))
 
 
         return fields
@@ -301,7 +301,7 @@ class FieldSuggestions:
         response: Response = self.helpers.send_request(self.supported_methods, query)
         response_json = self._get_JSON(response)
 
-        self._find_fields(response_json, 0, [], 4)
+        self._find_fields(response_json, [], 4)
 
 
     def run(self) -> None:
