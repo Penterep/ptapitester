@@ -214,6 +214,8 @@ def parse_args():
             args.tests = None
             CommonTests(args, base_request).run()
             args.tests = temp_test
+        elif args.module is not None and args.tests is None:
+            CommonTests(args, base_request).run()
 
         # Adjust argv if no API module was specified
         if found_api and args.module is None:

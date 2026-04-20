@@ -43,7 +43,7 @@ from ptlibs.ptprinthelper import ptprint
 from ..common_tests.common_tests import CommonTests
 
 global SCRIPTNAME
-SCRIPTNAME = "graphql"
+SCRIPTNAME = "ptpaitester-graphql"
 
 class GraphQLArgs(Namespace):
     def get_help(self):
@@ -323,6 +323,6 @@ def _get_all_available_modules() -> list:
 
 def main(args: Namespace, common_tests: object):
     global SCRIPTNAME
-    SCRIPTNAME = "graphql"
+    SCRIPTNAME = "ptpaitester-graphql"
     script = PtGraphQL(args, common_tests)
     script.run()
