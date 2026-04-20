@@ -1,1 +1,1 @@
-recursive-include ptpapi/wordlists *.txt
+recursive-include ptpapitester/wordlists *.txt
