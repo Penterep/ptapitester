@@ -93,6 +93,8 @@ class GraphQLArgs(Namespace):
                  "Specify wordlist to bruteforce GraphQL endpoint. Default: data/wordlists/endpoints.txt"],
                 ["-wt", "--wordlist-types", "<path/to/wordlist>",
                  "Specify wordlist to use in the type stuffing attack"],
+                ["-wf", "--wordlist-fields", "<path/to/wordlist>",
+                 "Specify wordlist to use in the field suggestions attack"],
                 ["-H", "--headers", "<header:value>", "Set custom header(s)"],
                 ["-r", "--redirects", "", "Follow redirects (default False)"],
                 ["-C", "--cache", "", "Cache HTTP communication (load from tmp in future)"],
@@ -117,10 +119,11 @@ class GraphQLArgs(Namespace):
         parser.add_argument("-p", "--proxy", type=str)
         parser.add_argument("-T", "--timeout", type=int, default=10)
         parser.add_argument("-t", "--threads", type=int, default=10)
-        parser.add_argument("-a", "--user-agent", type=str, default="Penterep Tools")
+        parser.add_argument("-a", "--user-agent", type=str, default="")
         parser.add_argument("-ts", "--tests", type=lambda s: s.lower(), nargs="+")
         parser.add_argument("-w", "--wordlist", type=str, default=None)
         parser.add_argument("-wt", "--wordlist-types", type=str, default=None)
+        parser.add_argument("-wf", "--wordlist-fields", type=str, default=None)
         parser.add_argument("-c", "--cookie", type=str)
         parser.add_argument("-H", "--headers", type=ptmisclib.pairs, nargs="+", default={"Content-Type": "application/json"})
         parser.add_argument("-r", "--redirects", action="store_true")
