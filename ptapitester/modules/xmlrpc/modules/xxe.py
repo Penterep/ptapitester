@@ -20,7 +20,7 @@ class XXETest:
         ]
         for p in payloads:
             r = self.helpers.send_xmlrpc_raw(data=p["data"])
-            if r and any(ind.lower() in r.text.lower() for ind in p["indicators"]):
+            if r is not None and any(ind.lower() in r.text.lower() for ind in p["indicators"]):
                 ptprint(f"XXE vulnerability detected ({p['name']})!", "VULN", not self.args.json, indent=4, colortext=True)
                 self.ptjsonlib.add_vulnerability("PTV-XML-XXE", node_key=self.helpers.node_key,
                     data={"evidence": f"Payload: {p['name']}. Snippet: {r.text[:200]}"})

@@ -25,7 +25,7 @@ class MulticallAmplification:
         multicall_payload += '</data></array></value></param></params></methodCall>'
 
         r = self.helpers.send_xmlrpc_raw(data=multicall_payload)
-        if r and "<array>" in r.text.lower():
+        if r is not None and "<array>" in r.text.lower():
             count = r.text.lower().count("<value>")
             if count >= 10:
                 ptprint(f"system.multicall amplification possible ({count} responses)!", "VULN",

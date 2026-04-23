@@ -92,7 +92,7 @@ class InformationDisclosure:
                  '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
                  '<soapenv:Body><message>tech_check</message></soapenv:Body>'
                  '</soapenv:Envelope>')
-        if r:
+        if r is not None:
             for header_name in tech_headers:
                 value = r.headers.get(header_name)
                 if value:

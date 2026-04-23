@@ -350,6 +350,7 @@ class WSDLExposure:
         self.helpers.parsed_services = self.parsed_services
         self.helpers.parsed_operations = self.parsed_operations
         self.helpers.type_definitions = self.type_definitions
+        self.helpers.target_namespace = self.target_namespace
 
         # =====================================================================
         # Output
