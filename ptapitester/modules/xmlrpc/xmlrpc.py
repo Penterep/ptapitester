@@ -101,7 +101,11 @@ class PtXMLRPC:
         self.thread_local_stdout.activate()
 
     def _initialize_scan(self):
-        """Create JSON node for the XML-RPC API."""
+        """Resolve XML-RPC endpoint, create JSON node for the XML-RPC API."""
+        # Try to find the actual XML-RPC endpoint (handles redirects,
+        # tries common paths like /xmlrpc.php, /xmlrpc/, /RPC2 etc.)
+        self.helpers.resolve_target_endpoint()
+
         # Create JSON node
         node = self.ptjsonlib.create_node_object("xmlrpc_api")
         self.helpers.node_key = node.get("key")

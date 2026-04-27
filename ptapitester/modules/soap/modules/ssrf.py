@@ -79,7 +79,7 @@ class SSRFTest:
                 return
 
         # Timing-based detection
-        if ssrf_elapsed >= 4.0 and normal_elapsed < 3:
+        if ssrf_elapsed >= 1.5 and ssrf_elapsed > normal_elapsed * 3:
             ptprint("SSRF detected — timeout indicates server-side connection attempt!", "VULN",
                     not self.args.json, indent=4, colortext=True)
             self.ptjsonlib.add_vulnerability(

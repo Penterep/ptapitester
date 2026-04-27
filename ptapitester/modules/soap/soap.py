@@ -20,6 +20,36 @@ from ptlibs.ptprinthelper import ptprint
 global SCRIPTNAME
 SCRIPTNAME = "soap"
 
+API_LEVEL_TESTS = {
+    "wsdl_exposure",           
+    "undocumented_endpoints",  
+    "authentication",         
+    "token_expiration",
+}
+
+ENDPOINT_LEVEL_TESTS = {
+    "xxe",                      
+    "http_method",              
+    "undocumented_operations",  
+    "information_disclosure",   
+    "xsd_validation",           
+    "replay_attack",            
+    "json_xml_mixing",          
+    "content_disposition",      
+    "content_type",             
+    "rate_limiting",            
+    "xff_bypass",               
+    "soapaction_spoofing",      
+    "operation_timeout",        
+    "undocumented_parameters",  
+    "xml_bomb",                 
+    "ssrf",                     
+    "server_validation",      
+    "integer_overflow",       
+    "null_input",             
+    "role_escalation",
+}
+
 
 class SOAPArgs(Namespace):
     def get_help(self):
@@ -98,19 +128,14 @@ class PtSOAP:
                                http_client=self.http_client)
         self.common_tests = common_tests
 
-        # Activate ThreadLocalStdout
         self.thread_local_stdout = ThreadLocalStdout(sys.stdout)
         self.thread_local_stdout.activate()
 
     def _initialize_scan(self):
         """Resolve WSDL endpoint, extract operations, create JSON node."""
-        # Resolve target endpoint from WSDL
         self.helpers.resolve_target_endpoint()
-
-        # Extract operations from WSDL
         operations = self.helpers.extract_operations_from_wsdl()
 
-        # Create JSON node
         node = self.ptjsonlib.create_node_object("soap_api")
         self.helpers.node_key = node.get("key")
         self.ptjsonlib.add_node(node)
@@ -119,6 +144,9 @@ class PtSOAP:
             node_key=self.helpers.node_key
         )
 
+        # Seed the endpoint list with the main endpoint
+        self.helpers.add_endpoint(self.helpers.endpoint_url)
+
         ptprint(f"Target endpoint: {self.helpers.endpoint_url}", "INFO",
                 not self.args.json, indent=4)
         if operations:
@@ -126,26 +154,62 @@ class PtSOAP:
                     not self.args.json, indent=4)
         ptprint(" ", "TEXT", not self.args.json)
 
-    def run(self) -> None:
-        """Main method — orchestrates SOAP security testing."""
+    def _split_tests(self, requested_tests):
+        """Split requested tests into API-level and endpoint-level lists."""
+        api_level = []
+        endpoint_level = []
 
-        # Initialize: resolve WSDL, extract operations, create node
+        for t in requested_tests:
+            if t in API_LEVEL_TESTS:
+                api_level.append(t)
+            elif t in ENDPOINT_LEVEL_TESTS:
+                endpoint_level.append(t)
+            else:
+                endpoint_level.append(t)
+
+        return api_level, endpoint_level
+
+    def run(self) -> None:
+        """Main method — orchestrates SOAP security testing in phases:
+
+        Phase 1: API-level tests (run once for whole API)
+        Phase 2: Endpoint-level tests (run for each discovered endpoint)
+        """
+
         self._initialize_scan()
 
-        # Common tests (CORS, HTTPS, Origin, Headers) are run by ptapi.py
-        # before this module is called — no need to run them here.
+        all_tests = self.args.tests or _get_all_available_modules()
+        api_level, endpoint_level = self._split_tests(all_tests)
 
-        # Get list of SOAP-specific tests to run
-        tests = self.args.tests or _get_all_available_modules()
-
-        # WSDL exposure/parsing must run first — other tests depend on
-        # parsed operations, parameters and type definitions
-        if "wsdl_exposure" in tests:
-            tests.remove("wsdl_exposure")
+        if "wsdl_exposure" in api_level:
+            api_level.remove("wsdl_exposure")
             self.run_single_module("wsdl_exposure")
 
-        # Run remaining SOAP-specific test modules
-        self.ptthreads.threads(tests, self.run_single_module, self.args.threads)
+        if "undocumented_endpoints" in api_level:
+            api_level.remove("undocumented_endpoints")
+            self.run_single_module("undocumented_endpoints")
+
+        if api_level:
+            self.ptthreads.threads(api_level, self.run_single_module, self.args.threads)
+
+        if endpoint_level:
+            endpoints = self.helpers.get_all_endpoints()
+            original_endpoint = self.helpers.endpoint_url
+
+            for endpoint in endpoints:
+                if len(endpoints) > 1:
+                    ptprint(f"\n=== Testing endpoint: {endpoint} ===",
+                            "INFO", not self.args.json, colortext=True)
+
+                self.helpers.endpoint_url = endpoint
+
+                self.ptthreads.threads(
+                    list(endpoint_level),
+                    self.run_single_module,
+                    self.args.threads
+                )
+
+            self.helpers.endpoint_url = original_endpoint
 
         self.ptjsonlib.set_status("finished")
         ptprint(self.ptjsonlib.get_result_json(), "", self.args.json)
