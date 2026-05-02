@@ -74,10 +74,10 @@ class GraphQLArgs(Namespace):
             return sorted(rows, key=lambda x: x[2])
 
         return [
-            {"description": ["Penterep template script"]},
-            {"usage": ["graphql <options>"]},
+            {"description": ["Module for GraphQL API testing"]},
+            {"usage": ["ptapitester GRAPHQL <options>"]},
             {"usage_example": [
-                "graphql -u https://www.example.com",
+                "ptapitester GRAPHQL -u https://www.example.com",
             ]},
             {"options": [
                 ["-u", "--url", "<url>", "Connect to URL"],

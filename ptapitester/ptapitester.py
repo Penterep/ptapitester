@@ -58,6 +58,13 @@ class PtApitester:
 
 
 def get_help():
+    def _get_available_modules():
+        rows = []
+
+        for module in MODULES.keys():
+            rows.append(["", module.upper(), "", f"Module for {module.upper()} API testing"])
+
+        return rows
     """
         Generate structured help content for the CLI tool.
 
@@ -72,14 +79,16 @@ def get_help():
                   available command-line flags and dynamically discovered test modules.
         """
     return [
-        {"description": ["PTAPITESTER"]},
+        {"description": ["Various API testing tool"]},
         {"usage": ["ptapitester [API_TYPE] <options>"]},
         {"usage_example": [
             "ptapitester -u https://www.example.com",
+            "ptapitester GRAPHQL -h",
             "ptapitester GRAPHQL -u https://www.example.com -ts introspection"
         ]},
         {"options": [
-            ["GRAPHQL", "<options>", "", "GraphQL testing module"],
+            ["[API_TYPE]", "", "", "Specify the target API for testing"],
+            *_get_available_modules(),
             ["", " ", "", ""],
             ["-v", "--version", "", "Show script version and exit"],
             ["-h", "--help", "", "Show this help message and exit"],
@@ -122,7 +131,7 @@ def parse_args():
     if len(sys.argv) == 2 and sys.argv[1] in MODULES:
         module_name = sys.argv[1]
         module_help = MODULES[module_name].module_args().get_help()
-        ptprinthelper.help_print(module_help, f"{SCRIPTNAME} {module_name}", __version__)
+        ptprinthelper.help_print(module_help, f"{SCRIPTNAME}", __version__)
         sys.exit(0)
 
     # Case 2b: Non-existent module (e.g. ptsrvtester FOO) - show banner, error, and our help
@@ -140,7 +149,7 @@ def parse_args():
             # Show module-specific help
             module_name = sys.argv[1]
             module_help = MODULES[module_name].module_args().get_help()
-            ptprinthelper.help_print(module_help, f"{SCRIPTNAME} {module_name}", __version__)
+            ptprinthelper.help_print(module_help, f"{SCRIPTNAME}", __version__)
             sys.exit(0)
         else:
             # Show main help
