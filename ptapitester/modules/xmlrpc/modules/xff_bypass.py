@@ -48,8 +48,8 @@ class XForwardedForBypass:
                 findings.append(f"{header_name}: {header_value} bypassed auth "
                                 f"(status {normal_status} -> {r_xff.status_code})")
 
-            # XFF value reflected
-            if header_value in r_xff.text:
+            all_response_text = r_xff.text + str(dict(r_xff.headers))
+            if header_value in all_response_text:
                 findings.append(f"{header_name} value '{header_value}' reflected in response")
 
             # Response size difference

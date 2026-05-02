@@ -20,14 +20,25 @@ class Helpers:
         self.wsdl_url = ""
         self.known_operations = []
         self.node_key = None
-
-        # Full WSDL parsed data (populated by wsdl_exposure module)
         self.parsed_services = []
         self.parsed_operations = []
         self.type_definitions = {}
+        self.target_namespace = ""
+        self.discovered_endpoints = []
 
     def print_header(self, test_label):
         ptprint(f"Testing: {test_label}", "TITLE", not self.args.json, colortext=True)
+
+    def add_endpoint(self, url):
+        """Add an endpoint URL to the discovered list (deduplicated)."""
+        if url and url not in self.discovered_endpoints:
+            self.discovered_endpoints.append(url)
+
+    def get_all_endpoints(self):
+        endpoints = list(self.discovered_endpoints)
+        if self.endpoint_url not in endpoints:
+            endpoints.insert(0, self.endpoint_url)
+        return endpoints
 
     def send_soap_request(self, url=None, data=None, headers=None, timeout=None):
         if url is None:
