@@ -525,7 +525,7 @@ def _identify_all(args, ptjsonlib, helpers, http_client, printer=False) -> tuple
     if detected:
         return "xmlrpc", base_request
 
-    return False, None
+    return None
 
 
 def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, printer=False) -> tuple[str, BaseRequest] | None:

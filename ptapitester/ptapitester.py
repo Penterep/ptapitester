@@ -93,7 +93,8 @@ def get_help():
             ["-v", "--version", "", "Show script version and exit"],
             ["-h", "--help", "", "Show this help message and exit"],
             ["-j", "--json", "", "Output in JSON format"],
-            ["-u", "--url", "<URL>", "Connect to URL"]
+            ["-u", "--url", "<URL>", "Connect to URL"],
+            ["-a", "--allow-redirects", "", "Allow redirects"]
         ]
         }]
 
@@ -194,6 +195,9 @@ def parse_args():
     parser.add_argument("-ts", "--tests", type=lambda s: s.lower(), nargs="+")
     parser.add_argument("-t", "--threads", type=int, default=10)
     parser.add_argument("-H", "--headers", type=ptmisclib.pairs, nargs="+", default={"User-Agent": "Penterep"})
+    parser.add_argument("-r", "--redirects", default=False, action="store_true")
+    parser.add_argument("-c", "--cookie", type=str)
+    parser.add_argument("-p", "--proxy", type=str)
 
     # Subparser for every application module
     subparsers = parser.add_subparsers(required=False, dest="module", parser_class=CustomArgumentParser)
@@ -209,6 +213,10 @@ def parse_args():
     # First parse to get the module name, second parse to get the module-specific arguments
     try:
         args = parser.parse_args(namespace=BaseArgs)
+
+        if args.proxy:
+            args.proxy = {"http": args.proxy, "https": args.proxy}
+
         args.url = check_url(args.url)
 
         # Detect API
