@@ -20,6 +20,7 @@ from requests import Response
 import os, requests
 import concurrent.futures
 from ..helpers.helpers import BaseRequest
+from ptthreads.ptthreads import ptthreads
 
 
 __TESTLABEL__ = "API identification test"
@@ -94,8 +95,8 @@ class IsGraphQL:
                                                  merge_headers=False)
 
         if response.status_code == HTTPStatus.UNAUTHORIZED:
-            ptprint(f"The host has authentication enabled for method GET at {url}", "OK", not self.args.json,
-                    indent=4)
+            #ptprint(f"The host has authentication enabled for method GET at {url}", "OK", not self.args.json,
+            #        indent=4)
             return False, base_request
 
         if response.status_code != HTTPStatus.OK:
@@ -509,7 +510,7 @@ class IsXMLRPC:
  
         return False, self.base_request
 
-def _identify_all(args, ptjsonlib, helpers, http_client, printer=False) -> tuple[str, BaseRequest] | None:
+def _identify_all(args, ptjsonlib, helpers, http_client, printer=False) -> tuple[str, BaseRequest] | tuple[None, None]:
     detected, base_request = IsGraphQL(args, ptjsonlib, helpers, http_client, printer).run()
 
     if detected:
@@ -525,10 +526,78 @@ def _identify_all(args, ptjsonlib, helpers, http_client, printer=False) -> tuple
     if detected:
         return "xmlrpc", base_request
 
-    return None
+    return None, None
+
+class ApiEndpointIdentifier:
+    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool) -> None:
+        self.args = args
+        self.ptjsonlib = ptjsonlib
+        self.helpers = helpers
+        self.http_client = http_client
+        self.stop_event = threading.Event()
+        self.found_url = ""
+        self.base_request = None
+        self.printer = printer
+
+    def locate_endpoints(self, wordlist: list[str]) -> set[str]|None:
+        def _probe_endpoint(url) -> str|None:
+            response: Response = self.http_client.send_request(url, method="GET", headers=self.args.headers,
+                                                               allow_redirects=self.args.redirects)
+
+            if response.status_code == HTTPStatus.NOT_FOUND:
+                return None
+
+            if 500 <= response.status_code < 599:
+                return None
+
+            return url
+
+        threads: ptthreads = ptthreads()
+        found_endpoints = set(threads.threads(wordlist, _probe_endpoint, self.args.threads))
+
+        if not found_endpoints:
+            return None
+
+        return found_endpoints
 
 
-def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, printer=False) -> tuple[str, BaseRequest] | None:
+    def run(self) -> None:
+        ptprint("API discovery", "TITLE", not self.args.json, colortext=True)
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        wordlist_path = os.path.join(current_dir, f"../data/wordlists/api_paths.txt")
+
+        with open(wordlist_path, "r") as file:
+            wordlist = [self.args.url + new_url for new_url in file.read().split('\n')]
+
+        found_endpoints = self.locate_endpoints(wordlist)
+
+        if found_endpoints is None:
+            ptprint("No API found", "INFO", not self.args.json, indent=4)
+            return
+
+        original_url = self.args.url
+
+        for endpoint in found_endpoints:
+            if endpoint is None:
+                continue
+
+            ptprint(f"API found on {endpoint}", "INFO", not self.args.json, indent=4)
+
+            self.args.url = endpoint
+
+            api_type, base_request = identify_api(self.args, self.ptjsonlib, self.helpers, self.http_client, None,
+                                                  printer=self.printer)
+
+            if api_type is not None:
+                ptprint(f"Detected API type: {api_type}", "INFO", not self.args.json, indent=8)
+            else:
+                ptprint(f"Unable to determine API type", "INFO", not self.args.json, indent=8)
+
+        self.args.url = original_url
+
+
+def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, printer=False) -> tuple[str, BaseRequest] | tuple[None, None]:
     """Entry point for API identification"""
     detected = False
     base_request = None
@@ -556,4 +625,4 @@ def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, p
         return detected if isinstance(detected, str) else module_name, base_request
 
     ptjsonlib.end_error("No API found", args.json)
-    return None
+    return None, None

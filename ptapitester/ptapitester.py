@@ -214,6 +214,10 @@ def parse_args():
     try:
         args = parser.parse_args(namespace=BaseArgs)
 
+        # Parse headers if specified
+        if isinstance(args.headers, list):
+            args.headers = {header.split(":")[0]: header.split(":")[1] for header in args.headers}
+
         if args.proxy:
             args.proxy = {"http": args.proxy, "https": args.proxy}
 
@@ -221,6 +225,11 @@ def parse_args():
 
         # Detect API
         ptprinthelper.print_banner(SCRIPTNAME, __version__, args.json)
+
+        if args.module is None:
+            CommonTests(args).identify_endpoints()
+            sys.exit(0)
+
         found_api, base_request = CommonTests(args).identify_api(args.module)
         detected_url = args.url
         ptprint(" ", "TEXT")
@@ -246,6 +255,8 @@ def parse_args():
 
         args = parser.parse_args(namespace=MODULES[args.module].module_args())
         args.url = detected_url
+        if isinstance(args.headers, list):
+            args.headers = {header.split(":")[0]: header.split(":")[1] for header in args.headers}
         args.base_request = base_request
 
         sys.argv = sys.argv[1:]

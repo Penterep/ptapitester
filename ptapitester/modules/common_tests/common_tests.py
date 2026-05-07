@@ -13,7 +13,7 @@ from .helpers._thread_local_stdout import ThreadLocalStdout
 from ptlibs import ptjsonlib
 from ptlibs.http.http_client import HttpClient
 from ptlibs.ptprinthelper import ptprint
-from .modules.api_identify import identify_api
+from .modules.api_identify import identify_api, ApiEndpointIdentifier
 
 
 class CommonTests:
@@ -31,6 +31,8 @@ class CommonTests:
         self.base_request = base_request
         self.base_indent = 0
 
+    def identify_endpoints(self):
+        ApiEndpointIdentifier(self.args, self.ptjsonlib, self.helpers, self.http_client, printer=False).run()
 
     def identify_api(self, module_name: str|None) -> tuple[str, BaseRequest]|None:
         return identify_api(self.args, self.ptjsonlib, self.helpers, self.http_client, module_name, printer=True)
