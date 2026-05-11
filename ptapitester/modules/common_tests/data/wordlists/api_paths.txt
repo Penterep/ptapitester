@@ -206,6 +206,7 @@
 /api/v4/groups
 /api/v4/projects
 /api/v4/users
+/api/security/role
 /api/videos
 /api/view
 /api/whoami

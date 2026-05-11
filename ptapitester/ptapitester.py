@@ -32,12 +32,14 @@ from helpers.helpers import BaseArgs
 from modules.graphql.graphql import PtGraphQL
 from modules.soap.soap import PtSOAP
 from modules.xmlrpc.xmlrpc import PtXMLRPC
+from modules.rest.rest import PtREST
 from modules.common_tests.common_tests import CommonTests
 
 MODULES = {
     "graphql": PtGraphQL,
     "soap": PtSOAP,
-    "xmlrpc": PtXMLRPC
+    "xmlrpc": PtXMLRPC,
+    "rest": PtREST
 }
 
 class PtApitester:
@@ -94,7 +96,7 @@ def get_help():
             ["-h", "--help", "", "Show this help message and exit"],
             ["-j", "--json", "", "Output in JSON format"],
             ["-u", "--url", "<URL>", "Connect to URL"],
-            ["-a", "--allow-redirects", "", "Allow redirects"]
+            ["-r", "--redirects", "", "Allow redirects"]
         ]
         }]
 
@@ -212,7 +214,7 @@ def parse_args():
 
     # First parse to get the module name, second parse to get the module-specific arguments
     try:
-        args = parser.parse_args(namespace=BaseArgs)
+        args = parser.parse_args(namespace=BaseArgs())
 
         # Parse headers if specified
         if isinstance(args.headers, list):
@@ -230,7 +232,9 @@ def parse_args():
             CommonTests(args).identify_endpoints()
             sys.exit(0)
 
-        found_api, base_request = CommonTests(args).identify_api(args.module)
+        if args.module:
+            found_api, base_request = CommonTests(args).identify_api(args.module)
+
         detected_url = args.url
         ptprint(" ", "TEXT")
         args.base_request = base_request

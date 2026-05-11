@@ -34,7 +34,7 @@ class CommonTests:
     def identify_endpoints(self):
         ApiEndpointIdentifier(self.args, self.ptjsonlib, self.helpers, self.http_client, printer=False).run()
 
-    def identify_api(self, module_name: str|None) -> tuple[str, BaseRequest]|None:
+    def identify_api(self, module_name: str|None) -> tuple[str, BaseRequest]| tuple[None, None]:
         return identify_api(self.args, self.ptjsonlib, self.helpers, self.http_client, module_name, printer=True)
 
     def run(self) -> None:

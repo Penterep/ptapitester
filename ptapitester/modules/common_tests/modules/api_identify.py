@@ -7,6 +7,8 @@ Contains:
 -
 - run() function as an entry point for running the test
 """
+import re
+import selectors
 import threading
 from http import HTTPStatus
 
@@ -29,7 +31,8 @@ __TESTLABEL__ = "API identification test"
 class IsGraphQL:
     """Class for executing the GraphQL availability test"""
 
-    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool) -> None:
+    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool,
+                 brute: bool) -> None:
         self.args = args
         self.ptjsonlib = ptjsonlib
         self.helpers = helpers
@@ -37,6 +40,7 @@ class IsGraphQL:
         self.stop_event = threading.Event()
         self.found_url = ""
         self.base_request = None
+        self.brute = brute
 
         if printer:
             self.helpers.print_header(__TESTLABEL__)
@@ -243,6 +247,9 @@ class IsGraphQL:
                 self.args.url = new_url
                 return True, self.base_request
             else:
+                if not self.brute:
+                    return False, self.base_request
+
                 parsed = urlparse(self.args.url)
                 url = parsed.scheme + "://" + parsed.netloc
 
@@ -269,7 +276,8 @@ class IsSOAP:
         "/api", "/rpc", "/server", "/gateway",
     ]
  
-    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool) -> None:
+    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool,
+                 brute: bool) -> None:
         self.args = args
         self.ptjsonlib = ptjsonlib
         self.helpers = helpers
@@ -277,6 +285,7 @@ class IsSOAP:
         self.stop_event = threading.Event()
         self.found_url = ""
         self.base_request = None
+        self.brute = brute
  
         if printer:
             self.helpers.print_header(__TESTLABEL__)
@@ -399,6 +408,9 @@ class IsSOAP:
                     not self.args.json, indent=4)
             return True, self.base_request
         else:
+            if not self.brute:
+                return False, self.base_request
+
             if new_url := self._brute_force(self.args.url):
                 self.args.url = new_url
                 ptprint(f"Found API: SOAP at {new_url}", "INFO",
@@ -425,13 +437,15 @@ class IsXMLRPC:
         "/api/xmlrpc", "/server.php", "/xmlrpc/api",
     ]
  
-    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool) -> None:
+    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool,
+                 brute: bool) -> None:
         self.args = args
         self.ptjsonlib = ptjsonlib
         self.helpers = helpers
         self.http_client = http_client
         self.stop_event = threading.Event()
         self.base_request = None
+        self.brute = brute
  
         if printer:
             self.helpers.print_header(__TESTLABEL__)
@@ -493,7 +507,10 @@ class IsXMLRPC:
             ptprint(f"Found API: XMLRPC at {self.args.url}", "INFO",
                     not self.args.json, indent=4)
             return True, self.base_request
- 
+
+        if not self.brute:
+            return False, self.base_request
+
         if new_url := self._brute_force(self.args.url):
             self.args.url = new_url
             ptprint(f"Found API: XMLRPC at {new_url}", "INFO",
@@ -510,23 +527,82 @@ class IsXMLRPC:
  
         return False, self.base_request
 
-def _identify_all(args, ptjsonlib, helpers, http_client, printer=False) -> tuple[str, BaseRequest] | tuple[None, None]:
-    detected, base_request = IsGraphQL(args, ptjsonlib, helpers, http_client, printer).run()
+
+class IsRest:
+    def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient,
+                 printer: bool, brute: bool) -> None:
+        self.args = args
+        self.ptjsonlib = ptjsonlib
+        self.helpers = helpers
+        self.http_client = http_client
+        self.stop_event = threading.Event()
+        self.base_request = BaseRequest(method="GET", data=None)
+        self.brute = brute
+
+
+    def _check_content_type(self, response: Response) -> bool:
+        json_pattern = re.compile(r"^\s*application/json\s*(?:;|$)", re.IGNORECASE)
+        xml_pattern = re.compile(r"^\s*(?:application|text)/xml\s*(?:;|$)", re.IGNORECASE)
+
+        if (not json_pattern.search(response.headers.get("content-type", "")) and
+                not xml_pattern.search(response.headers.get("content-type", ""))):
+            return False
+
+        return True
+
+    def _check_nonexistent_endpoint(self, path: str) -> bool:
+        path = path[:path.rfind("/")]
+        new_path = path + "/id0n0tex1st_yaho000o"
+
+        response: Response = self.http_client.send_request(url=self.args.url+new_path, method="GET", headers=self.args.headers,
+                                                           allow_redirects=self.args.redirects)
+
+        if response == HTTPStatus.NOT_FOUND:
+            return False
+
+        return True
+
+    def run(self) -> tuple[bool, BaseRequest]:
+        response: Response = self.http_client.send_request(url=self.args.url, method="GET", allow_redirects=self.args.redirects,
+                                                           headers=self.args.headers)
+
+        self.base_request = BaseRequest(method="GET", data=None)
+
+        if (response.status_code != HTTPStatus.NOT_FOUND
+                and not 500 <= response.status_code < 599):
+
+            if response.status_code == HTTPStatus.UNAUTHORIZED and self._check_nonexistent_endpoint(self.args.url):
+                return False, self.base_request
+
+
+            if self._check_content_type(response):
+                return True, self.base_request
+
+        return False, self.base_request
+
+
+def _identify_all(args, ptjsonlib, helpers, http_client, brute=True, printer=False) -> tuple[str, BaseRequest] | tuple[None, BaseRequest]:
+    detected, base_request = IsGraphQL(args, ptjsonlib, helpers, http_client, printer, brute).run()
 
     if detected:
         return "graphql", base_request
 
-    detected, base_request = IsSOAP(args, ptjsonlib, helpers, http_client, printer).run()
+    detected, base_request = IsSOAP(args, ptjsonlib, helpers, http_client, printer, brute).run()
 
     if detected:
         return "soap", base_request
     
-    detected, base_request = IsXMLRPC(args, ptjsonlib, helpers, http_client, printer).run()
+    detected, base_request = IsXMLRPC(args, ptjsonlib, helpers, http_client, printer, brute).run()
  
     if detected:
         return "xmlrpc", base_request
 
-    return None, None
+    detected, base_request = IsRest(args, ptjsonlib, helpers, http_client, printer, brute).run()
+
+    if detected:
+        return "rest", base_request
+
+    return None, base_request
 
 class ApiEndpointIdentifier:
     def __init__(self, args: Namespace, ptjsonlib: PtJsonLib, helpers: object, http_client: HttpClient, printer: bool) -> None:
@@ -582,40 +658,37 @@ class ApiEndpointIdentifier:
             if endpoint is None:
                 continue
 
-            ptprint(f"API found on {endpoint}", "INFO", not self.args.json, indent=4)
-
             self.args.url = endpoint
 
             api_type, base_request = identify_api(self.args, self.ptjsonlib, self.helpers, self.http_client, None,
-                                                  printer=self.printer)
+                                                  printer=self.printer, brute=False)
 
             if api_type is not None:
-                ptprint(f"Detected API type: {api_type}", "INFO", not self.args.json, indent=8)
-            else:
-                ptprint(f"Unable to determine API type", "INFO", not self.args.json, indent=8)
+                ptprint(f"API found on {endpoint}", "INFO", not self.args.json, indent=4)
+                ptprint(f"Detected API type: {api_type.upper()}", "INFO", not self.args.json, indent=8)
 
         self.args.url = original_url
 
 
-def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, printer=False) -> tuple[str, BaseRequest] | tuple[None, None]:
+def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, printer=False, brute=True) -> tuple[str, BaseRequest] | tuple[None, None]:
     """Entry point for API identification"""
     detected = False
     base_request = None
-
+    #ptprint(f"Module: {module_name}", "INFO")
     match module_name:
-        case "GRAPHQL":
-            detected, base_request = IsGraphQL(args, ptjsonlib, helpers, http_client, printer).run()
-        case "SOAP":
-            detected, base_request = IsSOAP(args, ptjsonlib, helpers, http_client, printer).run()
-        case "REST":
+        case "graphql":
+            detected, base_request = IsGraphQL(args, ptjsonlib, helpers, http_client, printer, brute).run()
+        case "soap":
+            detected, base_request = IsSOAP(args, ptjsonlib, helpers, http_client, printer, brute).run()
+        case "rest":
+            detected, base_request = IsRest(args, ptjsonlib, helpers, http_client, printer, brute).run()
+        case "xmlrpc":
+            detected, base_request = IsXMLRPC(args, ptjsonlib, helpers, http_client, printer, brute).run()
+        case "grpc":
             pass
-        case "XMLRPC":
-            detected, base_request = IsXMLRPC(args, ptjsonlib, helpers, http_client, printer).run()
-        case "GRPC":
+        case "json-rpc":
             pass
-        case "JSON-RPC":
-            pass
-        case "THRIFT":
+        case "thrift":
             pass
         case _:
             detected, base_request = _identify_all(args, ptjsonlib, helpers, http_client, printer)
@@ -624,5 +697,4 @@ def identify_api(args, ptjsonlib, helpers, http_client, module_name: str|None, p
         ptprint(f"Found API: {detected.upper() if isinstance(detected, str) else module_name.upper()} at {args.url}", "INFO", not args.json and printer, indent=4)
         return detected if isinstance(detected, str) else module_name, base_request
 
-    ptjsonlib.end_error("No API found", args.json)
     return None, None
