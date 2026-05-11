@@ -29,7 +29,11 @@ class Helpers:
             response = self.http_client.send_request(url=self.args.url, method=base_request.method, data=base_request.data,
                                                      headers=headers, merge_headers=False, allow_redirects=False)
         if base_request.method == "GET":
-            url = self.args.url + '?' + urlencode(base_request.data)
+            if base_request.data:
+                url = self.args.url + '?' + urlencode(base_request.data)
+            else:
+                url = self.args.url
+
             response = self.http_client.send_request(url=url, method=base_request.method, headers=headers, merge_headers=False,
                                                      allow_redirects=False)
 
