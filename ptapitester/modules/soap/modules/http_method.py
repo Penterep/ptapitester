@@ -34,9 +34,6 @@ class HTTPMethodTest:
         self.helpers = helpers
         self.helpers.print_header(__TESTLABEL__)
 
-    # ---------------------------------------------------------------------
-    # helper methods
-    # ---------------------------------------------------------------------
     def _looks_like_soap(self, text):
         if not text:
             return False
@@ -54,9 +51,6 @@ class HTTPMethodTest:
         text_lower = text.lower()
         return any(ind in text_lower for ind in PARSER_PROOF_INDICATORS)
 
-    # ---------------------------------------------------------------------
-    # Test 1 — Plain GET (informational only)
-    # ---------------------------------------------------------------------
     def _test_plain_get(self):
         """
         Send a plain GET to the endpoint. If the endpoint returns SOAP/WSDL,
@@ -78,30 +72,23 @@ class HTTPMethodTest:
 
         return False
 
-    # ---------------------------------------------------------------------
-    # Test 2 — SOAP envelope in GET query parameter (parser-aware)
-    # ---------------------------------------------------------------------
     def _test_xml_in_query(self):
         probes = [
-            # 1) Well-formed envelope — baseline
             ('<?xml version="1.0"?>'
              '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
              '<soapenv:Body><message>baseline</message></soapenv:Body>'
              '</soapenv:Envelope>'),
 
-            # 2) Malformed XML — unclosed tag
             ('<?xml version="1.0"?>'
              '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
              '<soapenv:Body><message>malformed_unclosed'
              '</soapenv:Envelope>'),
 
-            # 3) Undeclared namespace prefix
             ('<?xml version="1.0"?>'
              '<undeclared:Envelope>'
              '<undeclared:Body><message>ns_test</message></undeclared:Body>'
              '</undeclared:Envelope>'),
 
-            # 4) Invalid character in element name
             ('<?xml version="1.0"?>'
              '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
              '<soapenv:Body><123invalid>bad</123invalid></soapenv:Body>'
@@ -144,9 +131,6 @@ class HTTPMethodTest:
 
         return False
 
-    # ---------------------------------------------------------------------
-    # main runner
-    # ---------------------------------------------------------------------
     def run(self):
 
         plain_get_exposes_soap = self._test_plain_get()
