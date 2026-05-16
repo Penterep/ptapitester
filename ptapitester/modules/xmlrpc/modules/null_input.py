@@ -69,7 +69,7 @@ class NullInput:
             for f in findings:
                 ptprint(f"  {f}", "VULN", not self.args.json, indent=4)
             self.ptjsonlib.add_vulnerability(
-                "PTV-RPC-NULL-INPUT", node_key=self.helpers.node_key,
+                "PTV-XMLRPC-NULL-INPUT", node_key=self.helpers.node_key,
                 data={"evidence": "; ".join(findings)})
         else:
             ptprint("Server rejects null/empty input.", "OK",

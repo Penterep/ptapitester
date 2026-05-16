@@ -60,7 +60,7 @@ class UndocumentedMethods:
         if found_methods:
             self.helpers.undocumented_methods = found_methods
             self.ptjsonlib.add_vulnerability(
-                "PTV-RPC-UNDOCUMENTED-METHODS", node_key=self.helpers.node_key,
+                "PTV-XMLRPC-UNDOCUMENTED-METHODS", node_key=self.helpers.node_key,
                 data={"evidence": f"Dictionary attack found {len(found_methods)} undocumented method(s): {', '.join(found_methods)}"})
         else:
             ptprint("No undocumented methods found.", "OK", not self.args.json, indent=4)
