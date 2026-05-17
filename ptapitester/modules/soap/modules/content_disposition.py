@@ -1,47 +1,42 @@
 """
-SOAP Content-Disposition response-header test
+SOAP Content-Disposition response-header  test 
 """
 import re
 from ptlibs.ptprinthelper import ptprint
 
-__TESTLABEL__ = "SOAP Content-Disposition response-header test"
+__TESTLABEL__ = "SOAP Content-Disposition response-header audit"
 
 STANDARD_SOAP_CONTENT_TYPES = (
-    "text/xml",
-    "application/soap+xml",
-    "application/xml",
+    "text/xml","application/soap+xml","application/xml",
 )
 
 DOWNLOAD_CONTENT_TYPES = (
-    "application/octet-stream",
-    "application/pdf",
-    "application/zip",
-    "application/x-zip-compressed",
-    "application/x-msdownload",
-    "application/x-executable",
-    "application/force-download",
-    "application/download",
+    "application/octet-stream","application/pdf","application/zip","application/x-zip-compressed",
+    "application/x-msdownload","application/x-executable","application/force-download","application/download",
+)
+
+JSON_CONTENT_TYPES = (
+    "application/json","text/json",
 )
 
 ATTACHMENT_CONTENT_TYPES = (
-    "multipart/related",
-    "multipart/form-data",
-    "application/xop+xml",
+    "multipart/related","multipart/form-data","application/xop+xml",
 )
 
 HTML_CONTENT_TYPES = (
-    "text/html",
-    "application/xhtml+xml",
+    "text/html","application/xhtml+xml",
 )
 
 SUSPICIOUS_FILENAME_PATTERNS = [
-    re.compile(r"[\r\n]"),
-    re.compile(r"\.\.[/\\]"),
-    re.compile(r"^/"),
-    re.compile(r"^[A-Za-z]:[\\/]"),
-    re.compile(r"\x00"),
-    re.compile(r"\.(pdf|doc|xls|jpg|png|gif)\.(exe|bat|cmd|sh|ps1|jar|scr)$",
-               re.IGNORECASE),
+    (re.compile(r"[\r\n]"), "CRLF characters (header injection risk)"),
+    (re.compile(r"\.\.[/\\]"), "path traversal sequence"),
+    (re.compile(r"^/"), "absolute Unix-style path"),
+    (re.compile(r"^[A-Za-z]:[\\/]"), "absolute Windows-style path"),
+    (re.compile(r"\x00"), "null byte"),
+    (re.compile(
+        r"\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png|gif|txt)"
+        r"\.(exe|bat|cmd|sh|ps1|jar|scr|vbs|com)$", re.IGNORECASE),
+     "double-extension trick (e.g. invoice.pdf.exe)"),
 ]
 
 
@@ -54,8 +49,40 @@ class ContentDispositionTest:
         self.common_tests = common_tests
         self.helpers.print_header(__TESTLABEL__)
 
+    def _default_value(self, param_type):
+        if param_type == 'string':
+            return 'test'
+        if param_type in ('int', 'integer', 'long', 'short'):
+            return '1'
+        if param_type in ('decimal', 'float', 'double'):
+            return '1.0'
+        if param_type == 'boolean':
+            return 'true'
+        return 'test'
+
+    def _build_request(self, op):
+        tns = getattr(self.helpers, 'target_namespace', '') or 'http://tempuri.org/'
+        input_element = op.get('input_element', op.get('name', ''))
+        params = op.get('input_params', [])
+
+        params_xml = ''
+        for p in params:
+            p_name = p.get('name', '')
+            p_type = p.get('type', 'string')
+            if not p_name:
+                continue
+            val = self._default_value(p_type)
+            params_xml += f'<tns:{p_name}>{val}</tns:{p_name}>'
+
+        return (
+            f'<?xml version="1.0"?>'
+            f'<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
+            f' xmlns:tns="{tns}">'
+            f'<soap:Body><tns:{input_element}>{params_xml}'
+            f'</tns:{input_element}></soap:Body></soap:Envelope>'
+        )
+
     def _classify_content_type(self, content_type):
-        """Return a short string describing what kind of content this is."""
         ct = (content_type or "").lower()
         if any(ct.startswith(t) for t in STANDARD_SOAP_CONTENT_TYPES):
             return "standard_soap_xml"
@@ -65,13 +92,15 @@ class ContentDispositionTest:
             return "download"
         if any(ct.startswith(t) for t in HTML_CONTENT_TYPES):
             return "html"
-        if ct.startswith("application/") or ct.startswith("image/") or \
-                ct.startswith("audio/") or ct.startswith("video/"):
+        if any(ct.startswith(t) for t in JSON_CONTENT_TYPES):
+            return "json"
+        if ct.startswith("image/") or ct.startswith("audio/") or ct.startswith("video/"):
             return "binary"
+        if ct.startswith("application/"):
+            return "application_other"
         return "unknown"
 
     def _body_looks_binary(self, body):
-        """Heuristic: does the response body look like binary (not text)?"""
         if not body:
             return False
         if isinstance(body, bytes):
@@ -104,10 +133,8 @@ class ContentDispositionTest:
 
     def _parse_content_disposition(self, header_value):
         """Parse a Content-Disposition header into (type, params_dict).
-
-        Returns (None, None) if header is missing.
-        Returns ('__malformed__', {}) if the header is present but cannot
-        be parsed reasonably."""
+        Returns (None, None) if missing.
+        Returns ('__malformed__', {}) if present but unparseable."""
         if not header_value:
             return None, None
 
@@ -135,143 +162,158 @@ class ContentDispositionTest:
         return disp_type, params
 
     def _suspicious_filename(self, filename):
-        """Return a description string if filename is suspicious, or None."""
+        """Return description string if filename is suspicious, or None."""
         if not filename:
             return None
-        for pat in SUSPICIOUS_FILENAME_PATTERNS:
+        for pat, desc in SUSPICIOUS_FILENAME_PATTERNS:
             if pat.search(filename):
-                return f"filename matches suspicious pattern: {pat.pattern!r}"
+                return desc
         return None
 
-    def run(self):
-        soap_request = (
-            '<?xml version="1.0"?>'
-            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
-            '<soapenv:Body><message>content_disposition_audit</message></soapenv:Body>'
-            '</soapenv:Envelope>'
-        )
+    def _analyse_response(self, op_name, response):
+        findings = []
+        info_notes = []
 
-        r = self.helpers.send_soap_request(data=soap_request)
-        if r is None:
-            ptprint("Could not complete Content-Disposition audit "
-                    "(no response from server).", "INFO",
-                    not self.args.json, indent=4)
-            return
-
-        content_type = r.headers.get("Content-Type", "")
-        content_disposition = r.headers.get("Content-Disposition", "")
+        content_type = response.headers.get("Content-Type", "")
+        content_disposition = response.headers.get("Content-Disposition", "")
 
         ct_category = self._classify_content_type(content_type)
-        body_binary = self._body_looks_binary(r.text)
-        body_xml = self._body_looks_like_xml(r.text)
-        body_html = self._body_looks_like_html(r.text)
+        body_binary = self._body_looks_binary(response.text)
+        body_xml = self._body_looks_like_xml(response.text)
+        body_html = self._body_looks_like_html(response.text)
 
         disp_type, disp_params = self._parse_content_disposition(content_disposition)
         disp_filename = (disp_params or {}).get("filename") if disp_params else None
 
-        findings = []
-        info_notes = []
+        prefix = f"Operation '{op_name}': " if op_name else ""
 
         if ct_category == "standard_soap_xml" or body_xml:
             if not content_disposition:
                 info_notes.append(
-                    "Standard SOAP XML response returned without "
-                    "Content-Disposition header (normal RFC-compliant "
-                    "behaviour for SOAP endpoints).")
+                    f"{prefix}standard SOAP XML response returned without "
+                    f"Content-Disposition header (normal RFC-compliant behaviour).")
             else:
                 if disp_type == "inline":
                     info_notes.append(
-                        f"SOAP XML response includes Content-Disposition: "
-                        f"inline (Content-Type: {content_type or 'unknown'}).")
+                        f"{prefix}SOAP XML response includes "
+                        f"Content-Disposition: inline.")
                 elif disp_type == "attachment":
                     info_notes.append(
-                        f"SOAP XML response unexpectedly served with "
-                        f"Content-Disposition: attachment — clients may "
+                        f"{prefix}SOAP XML response unexpectedly served "
+                        f"with Content-Disposition: attachment — clients may "
                         f"prompt to save the SOAP envelope as a file.")
                 elif disp_type == "__malformed__":
                     findings.append(
-                        f"Malformed Content-Disposition header detected: "
-                        f"{content_disposition!r}. Malformed headers may be "
-                        f"parsed inconsistently by different clients.")
+                        f"{prefix}malformed Content-Disposition header "
+                        f"detected: {content_disposition!r}.")
                 else:
                     info_notes.append(
-                        f"SOAP XML response includes Content-Disposition: "
-                        f"{disp_type}.")
+                        f"{prefix}SOAP XML response includes "
+                        f"Content-Disposition: {disp_type}.")
 
         elif ct_category == "html" or body_html:
             findings.append(
-                f"SOAP endpoint returned HTML content (Content-Type: "
-                f"{content_type or 'unknown'}). This is unexpected for a "
-                f"SOAP service and may indicate misconfiguration, error "
-                f"page leakage, or response-type confusion. If untrusted "
-                f"input can influence this response, an attacker may be "
-                f"able to deliver HTML/JS rendered by browsers (reflected "
-                f"file download / XSS-via-SOAP).")
+                f"{prefix}SOAP endpoint returned HTML content (Content-Type: "
+                f"{content_type or 'unknown'}). This is unexpected for a SOAP "
+                f"service and may indicate misconfiguration or response-type "
+                f"confusion.")
+            
+        elif ct_category == "json":
+            return findings, []
 
         elif ct_category in ("download", "binary", "attachment_like") or body_binary:
             if not content_disposition:
                 findings.append(
-                    f"SOAP endpoint returned downloadable/binary content "
-                    f"(Content-Type: {content_type or 'unknown'}) without "
-                    f"a Content-Disposition header. Browsers and clients "
-                    f"may sniff the content type or render the response "
-                    f"inline. RFC 6266 recommends an explicit "
-                    f"Content-Disposition (inline or attachment with a "
-                    f"safe filename) for such payloads.")
+                    f"{prefix}downloadable/binary content returned "
+                    f"(Content-Type: {content_type or 'unknown'}) without a "
+                    f"Content-Disposition header. Clients may handle this response "
+                    f"inconsistently because no filename or download/inline handling "
+                    f"is explicitly specified.")
             elif disp_type == "__malformed__":
                 findings.append(
-                    f"Malformed Content-Disposition header on a "
+                    f"{prefix}malformed Content-Disposition header on a "
                     f"downloadable response: {content_disposition!r}.")
             else:
                 susp = self._suspicious_filename(disp_filename)
                 if susp:
                     findings.append(
-                        f"Downloadable response includes a suspicious "
-                        f"filename parameter ({disp_filename!r}): {susp}. "
-                        f"This may enable CRLF injection, path traversal "
-                        f"or extension-based deception.")
+                        f"{prefix}downloadable response includes a suspicious "
+                        f"filename parameter ({disp_filename!r}): {susp}.")
                 else:
                     info_notes.append(
-                        f"Downloadable response includes "
+                        f"{prefix}downloadable response includes "
                         f"Content-Disposition: {disp_type}"
                         + (f" (filename: {disp_filename!r})"
                            if disp_filename else "") + ".")
 
         else:
             info_notes.append(
-                f"SOAP endpoint returned response of unrecognised type "
-                f"(Content-Type: {content_type or 'unknown'}). "
-                f"Content-Disposition: {content_disposition or '(absent)'}.")
+                f"{prefix}response of unrecognised type (Content-Type: "
+                f"{content_type or 'unknown'}, "
+                f"Content-Disposition: {content_disposition or '(absent)'}).")
 
-        if disp_filename and disp_type not in (None, "__malformed__"):
+        if (disp_filename and disp_type not in (None, "__malformed__")
+                and not any("suspicious filename" in f.lower() for f in findings)):
             susp = self._suspicious_filename(disp_filename)
-            if susp and not any("suspicious filename" in f for f in findings):
+            if susp:
                 findings.append(
-                    f"Content-Disposition filename parameter is suspicious "
-                    f"({disp_filename!r}): {susp}.")
+                    f"{prefix}Content-Disposition filename parameter is "
+                    f"suspicious ({disp_filename!r}): {susp}.")
 
-        if findings:
+        return findings, info_notes
+
+    def _generic_request(self):
+        return (
+            '<?xml version="1.0"?>'
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
+            '<soapenv:Body><message>content_disposition_audit</message></soapenv:Body>'
+            '</soapenv:Envelope>'
+        )
+
+    def run(self):
+        all_findings = []   
+        all_info = []       
+
+        operations = getattr(self.helpers, 'parsed_operations', []) or []
+        valid_ops = [op for op in operations if op.get('name')]
+
+        if valid_ops:
+            for op in valid_ops:
+                op_name = op['name']
+                request_body = self._build_request(op)
+                r = self.helpers.send_soap_request(data=request_body)
+                if r is None:
+                    ptprint(f"  Operation '{op_name}': no response.", "INFO",
+                            not self.args.json, indent=4)
+                    continue
+                findings, info_notes = self._analyse_response(op_name, r)
+                all_findings.extend((op_name, f) for f in findings)
+                all_info.extend((op_name, n) for n in info_notes)
+        else:
+            r = self.helpers.send_soap_request(data=self._generic_request())
+            if r is None:
+                ptprint("Could not complete Content-Disposition audit "
+                        "(no response from server).", "INFO",
+                        not self.args.json, indent=4)
+                return
+            findings, info_notes = self._analyse_response("", r)
+            all_findings.extend(("", f) for f in findings)
+            all_info.extend(("", n) for n in info_notes)
+
+        if all_findings:
             ptprint("Potentially unsafe response-download behaviour detected.",
                     "VULN", not self.args.json, indent=4, colortext=True)
+
             evidence_parts = []
-            for f in findings:
+            for op_name, f in all_findings:
                 ptprint(f"  {f}", "VULN", not self.args.json, indent=4)
                 evidence_parts.append(f)
-
-            if info_notes:
-                for n in info_notes:
-                    ptprint(f"  (info) {n}", "INFO",
-                            not self.args.json, indent=4)
 
             evidence = (
                 f"Content-Disposition audit on SOAP endpoint "
                 f"{self.helpers.endpoint_url}. "
-                f"Response Content-Type: {content_type or '(absent)'}, "
-                f"Content-Disposition: {content_disposition or '(absent)'}. "
                 + " || ".join(evidence_parts)
             )
-            if info_notes:
-                evidence += " Additional observations: " + " ".join(info_notes)
 
             self.ptjsonlib.add_vulnerability(
                 "PTV-SOAP-CONTENT-DISPOSITION",
@@ -279,14 +321,8 @@ class ContentDispositionTest:
                 data={"evidence": evidence})
             return
 
-        if info_notes:
-            ptprint("Content-Disposition audit completed (informational).",
-                    "OK", not self.args.json, indent=4)
-            for n in info_notes:
-                ptprint(f"  {n}", "INFO", not self.args.json, indent=4)
-        else:
-            ptprint("Content-Disposition audit completed (no observations).",
-                    "OK", not self.args.json, indent=4)
+        ptprint("No unsafe Content-Disposition behaviour detected.",
+            "OK", not self.args.json, indent=4)
 
 
 def run(args, ptjsonlib, helpers, http_client, common_tests):
