@@ -121,10 +121,12 @@ class PtXMLRPC:
         ptprint(" ", "TEXT", not self.args.json)
 
     def run(self) -> None:
-        """Main method — orchestrates XML-RPC security testing."""
         self._initialize_scan()
 
-        tests = self.args.tests or _get_all_available_modules()
+        if self.args.tests:
+            tests = list(self.args.tests)
+        else:
+            tests = _get_all_available_modules()
 
         # Introspection must run first — other tests depend on discovered methods
         if "introspection" in tests:

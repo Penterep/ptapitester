@@ -105,3 +105,10 @@ amount
 price
 quantity
 total
+include_password_hash
+includePasswordHash
+password_hash
+passwordHash
+show_password_hash
+showPasswordHash
+include_hash
