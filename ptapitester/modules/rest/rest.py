@@ -15,7 +15,7 @@ from ptthreads import ptthreads
 from _version import __version__
 from .helpers.helpers import Helpers
 from .helpers._thread_local_stdout import ThreadLocalStdout
-from ptlibs import ptjsonlib
+from ptlibs import ptjsonlib, ptmisclib
 from ptlibs.http.http_client import HttpClient
 from ptlibs.ptprinthelper import ptprint
 
@@ -73,6 +73,7 @@ class RESTArgs(Namespace):
                 ["-v", "--version", "", "Show script version and exit"],
                 ["-h", "--help", "", "Show this help message and exit"],
                 ["-j", "--json", "", "Output in JSON format"],
+                ["-sf", "--swagger-file", "", "OpenAPI definition file"]
             ]
             }]
 
@@ -84,8 +85,12 @@ class RESTArgs(Namespace):
         )
         parser.add_argument("-p", "--proxy", type=str)
         parser.add_argument("-T", "--timeout", type=int, default=10)
-        parser.add_argument("-a", "--user-agent", type=str, default="Penterep Tools")
+        parser.add_argument("-t", "--threads", type=int, default=10)
+        parser.add_argument("-a", "--user-agent", type=str, default="")
+        parser.add_argument("-ts", "--tests", type=lambda s: s.lower(), nargs="+")
         parser.add_argument("-c", "--cookie", type=str)
+        parser.add_argument("-H", "--headers", type=ptmisclib.pairs, nargs="+",
+                            default={"Content-Type": "application/json"})
         parser.add_argument("-r", "--redirects", action="store_true")
         parser.add_argument("-C", "--cache", action="store_true")
         parser.add_argument("-v", "--version", action='version', version=f'{SCRIPTNAME} {__version__}')
@@ -93,6 +98,7 @@ class RESTArgs(Namespace):
         parser.add_argument("--socket-address", type=str, default=None)
         parser.add_argument("--socket-port", type=str, default=None)
         parser.add_argument("--process-ident", type=str, default=None)
+        parser.add_argument("-sf", "--swagger-file", type=str, default=None)
 
         return parser
 
