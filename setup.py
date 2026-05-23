@@ -25,7 +25,8 @@ setuptools.setup(
     python_requires=">=3.12",
     install_requires = [
         "ptlibs>=1.0.25",
-        "ptthreads"
+        "ptthreads",
+        "PyYAML"
 ],
     entry_points={"console_scripts": ["ptapitester = ptapitester.ptapitester:main"]},
     include_package_data=True,
