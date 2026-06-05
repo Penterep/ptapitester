@@ -28,7 +28,7 @@ class CommonTests:
         # Activate ThreadLocalStdout stdout proxy
         self.thread_local_stdout = ThreadLocalStdout(sys.stdout)
         self.thread_local_stdout.activate()
-        self.base_request = base_request
+        self.base_request = base_request or BaseRequest("GET", {})
         self.base_indent = 0
 
     def identify_endpoints(self):
