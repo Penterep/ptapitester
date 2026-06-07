@@ -568,8 +568,7 @@ class IsRest:
 
         self.base_request = BaseRequest(method="GET", data=None)
 
-        if (response.status_code != HTTPStatus.NOT_FOUND
-                and not 500 <= response.status_code < 599):
+        if not 500 <= response.status_code < 599:
 
             if response.status_code == HTTPStatus.UNAUTHORIZED and self._check_nonexistent_endpoint(self.args.url):
                 return False, self.base_request
