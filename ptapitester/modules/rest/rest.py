@@ -73,7 +73,8 @@ class RESTArgs(Namespace):
                 ["-v", "--version", "", "Show script version and exit"],
                 ["-h", "--help", "", "Show this help message and exit"],
                 ["-j", "--json", "", "Output in JSON format"],
-                ["-sf", "--swagger-file", "", "OpenAPI definition file"]
+                ["-sf", "--swagger-file", "", "OpenAPI definition file"],
+                ["-rf", "--requests-file", "", "BurpSuite requests XMl file"]
             ]
             }]
 
@@ -99,7 +100,7 @@ class RESTArgs(Namespace):
         parser.add_argument("--socket-port", type=str, default=None)
         parser.add_argument("--process-ident", type=str, default=None)
         parser.add_argument("-sf", "--swagger-file", type=str, default=None)
-
+        parser.add_argument("-rf", "--requests-file", type=str, default=None)
         return parser
 
 
