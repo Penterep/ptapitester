@@ -211,6 +211,7 @@ def parse_args():
         subp.add_argument("-u", "--url", type=str, required=True)
         subp.add_argument("-vv", "--verbose", action="store_true")
         subp.add_argument("-br", "--base_request", default=None)
+        subp.add_argument("-l", "--loud", default=False, action="store_true")
 
     # First parse to get the module name, second parse to get the module-specific arguments
     try:
