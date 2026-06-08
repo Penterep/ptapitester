@@ -87,7 +87,7 @@ class Swagger:
                                                               headers=self.args.headers)
 
             if response.status_code != HTTPStatus.OK:
-                ptprint(f"Could not retrieve OpenAPI definition from {source}. Received status code: {response.status_code}",
+                ptprint(f"Could not retrieve OpenAPI definition from {source}. Received status code: {response.status_code}", "ERROR",
                         not self.args.json, indent=4)
                 ptprint(f"Full response: {response.text}", "ADDITIONS", self.args.verbose, indent=4, colortext=True)
 

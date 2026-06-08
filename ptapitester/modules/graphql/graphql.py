@@ -129,7 +129,7 @@ class GraphQLArgs(Namespace):
         parser.add_argument("-r", "--redirects", action="store_true")
         parser.add_argument("-C", "--cache", action="store_true")
         parser.add_argument("-v", "--version", action='version', version=f'{SCRIPTNAME} {__version__}')
-        parser.add_argument("-l", "--loud", action="store_true")
+        #parser.add_argument("-l", "--loud", action="store_true")
         parser.add_argument("-s", "--schema", default=None)
         parser.add_argument("-dt", "--dump-types", default=None)
 
