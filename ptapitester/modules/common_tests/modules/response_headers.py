@@ -28,6 +28,50 @@ class Origin:
 
         self.helpers.print_header(__TESTLABEL__, self.base_indent)
 
+    def _content_type_options(self, response: Response) -> None:
+        x_content_type_options = response.headers.get("X-Content-Type-Options", "").lower()
+
+        if x_content_type_options == "nosniff":
+            ptprint(f"X-Content-Type-Options: {x_content_type_options}", "OK", not self.args.json, indent=4)
+        elif x_content_type_options == "":
+            ptprint("The API does not implement a Content-Type-Options header", "VULN", not self.args.json, indent=4)
+            self.ptjsonlib.add_vulnerability("PTV-API-CONTENT-TYPE-OPTIONS")
+        else:
+            ptprint(f"X-Content-Type-Options: {x_content_type_options}", "VULN", not self.args.json, indent=4)
+            self.ptjsonlib.add_vulnerability("PTV-API-CONTENT-TYPE-OPTIONS")
+
+
+    def _referrer_policy(self, response: Response) -> None:
+        options = {
+            "no-referrer": "secure",
+            "origin": "secure",
+            "origin-when-cross-origin": "secure",
+            "same-origin": "secure",
+            "strict-origin": "secure",
+            "strict-origin-when-cross-origin": "secure",
+            "unsafe-url": "insecure",
+            "no-referrer-when-downgrade": "insecure"
+        }
+
+        rp = response.headers.get("Referrer-Policy", "").lower()
+
+        if rp == "":
+            ptprint("The API does not implement a Referrer policy", "VULN", not self.args.json, indent=4)
+            return
+
+        match options.get(rp):
+            case "secure":
+                ptprint(f"The API implements a secure referrer policy: Referrer-Policy: {rp}", "OK",
+                        not self.args.json, indent=4)
+            case "insecure":
+                ptprint(f"The API implements an insecure referrer policy: Referrer-Policy: {rp}", "VULN",
+                        not self.args.json, indent=4)
+                self.ptjsonlib.add_vulnerability("PTV-API-REFERRER-POLICY")
+            case _:
+                ptprint(f"Could not determine referrer policy: Referrer-Policy: {rp}", "INFO",
+                        not self.args.json, indent=4)
+
+
     def _cache_control(self, response: Response) -> None:
         """
         This method checks the HTTP response headers from the server to see if they return a Cache-Control header.
@@ -67,6 +111,8 @@ class Origin:
         response: Response = self.helpers.send_request(self.args.base_request, self.args.headers)
 
         self._cache_control(response)
+        self._referrer_policy(response)
+        self._content_type_options(response)
 
 def run(args, ptjsonlib, helpers, http_client, base_indent):
     """Entry point for running the Origin security test"""
