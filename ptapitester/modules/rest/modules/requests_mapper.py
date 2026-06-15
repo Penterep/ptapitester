@@ -23,6 +23,7 @@ from http import HTTPStatus, HTTPMethod
 import xml.etree.ElementTree as ET
 import email
 from dataclasses import dataclass
+from urllib.parse import parse_qs, urlparse
 
 __TESTLABEL__ = "API request JSON parser"
 
@@ -35,6 +36,20 @@ _PARAM_RE = [
     re.compile(r"^[0-9a-f]{24}$", re.I),  # MongoDB ObjectId
     re.compile(r"^[0-9a-zA-Z_\-]{32,}$"),  # long token / hash
 ]
+
+OPERATION_RE = re.compile(
+    r'(?:^\s*|\b)(query|mutation|subscription)\s*([A-Za-z_][A-Za-z0-9_]*)?'
+    r'\s*(\(([^)]*)\))?\s*\{',
+    re.I,
+)
+FRAGMENT_RE = re.compile(
+    r'\bfragment\s+([A-Za-z_][A-Za-z0-9_]*)\s+on\s+[A-Za-z_][A-Za-z0-9_]*\s*\{',
+    re.I,
+)
+VAR_DECL_RE = re.compile(r'\$([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([\[\]A-Za-z0-9_!]+)')
+FIELD_RE = re.compile(
+    r'([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)'
+)
 
 
 def _is_param(segment: str) -> bool:
@@ -198,7 +213,8 @@ class Parser:
 
     @dataclass
     class ParsedRequest:
-        method: HTTPMethod
+        url: str
+        method: str
         endpoint: str
         headers: dict
         body: str
@@ -210,6 +226,233 @@ class Parser:
             return base64.b64decode(text).decode("ascii")
 
         return text
+
+
+    def _is_graphql(self, request: ParsedRequest, response: ParsedResponse) -> dict | None:
+        content_type = response.headers.get("Content-Type", "").lower()
+
+        if not content_type:
+            return None
+
+        if content_type not in ["application/graphql-response+json", "application/json"]:
+            return None
+
+        try:
+            response_json = json.loads(response.body)
+        except JSONDecodeError as e:
+            ptprint(f"Failed loading JSON from response. The API is not GraphQL", "ADDITIONS", self.args.verbose,
+                    indent=4, colortext=True)
+            return None
+
+        if "data" not in response_json:
+            return None
+
+        if request.method == "POST":
+            try:
+                query = json.loads(request.body)
+            except JSONDecodeError as e:
+                ptprint(f"Could not load GraphQL query from request: {e}", "ERROR", self.args.verbose, indent=4)
+
+        elif request.method == "GET":
+            query = parse_qs(urlparse(request.url).query)
+            if "query" not in query:
+                return None
+
+            query["query"] = query.get("query", [])[0]
+
+        parsed = self.parse_graphql_document(query["query"])
+
+        op_name = parsed["operation_name"] or "<anonymous>"
+
+        return {
+            'operation_type': parsed['operation_type'],
+            'operation_name': op_name,
+            'variables_declared': parsed['variables'],
+            'variables_provided': {},
+            'fields': parsed['fields'],
+            'query': query["query"].strip(),
+        }
+
+
+    def find_matching_brace(self, text: str, open_idx: int) -> int:
+        """Given the index of a '{', return the index of its matching '}', or -1."""
+        depth = 0
+        for i in range(open_idx, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    return i
+        return -1
+
+    def extract_fragments(self, text: str) -> dict[str, str]:
+        """Find all `fragment Name on Type { ... }` definitions and return name -> body."""
+        fragments = {}
+        for m in FRAGMENT_RE.finditer(text):
+            name = m.group(1)
+            brace_start = m.end() - 1
+            brace_end = self.find_matching_brace(text, brace_start)
+            if brace_end != -1:
+                fragments[name] = text[brace_start + 1:brace_end]
+        return fragments
+
+    def _skip_directives(self, body: str, i: int, n: int) -> int:
+        """Skip whitespace and any GraphQL directives (e.g. @include(if: $x), @skip, @deprecated)."""
+        while True:
+            while i < n and body[i] in ' \t\r\n':
+                i += 1
+            if i < n and body[i] == '@':
+                i += 1
+                m_dir = re.match(r'[A-Za-z_][A-Za-z0-9_]*', body[i:])
+                if m_dir:
+                    i += m_dir.end()
+                while i < n and body[i] in ' \t\r\n':
+                    i += 1
+                if i < n and body[i] == '(':
+                    depth = 0
+                    while i < n:
+                        if body[i] == '(':
+                            depth += 1
+                        elif body[i] == ')':
+                            depth -= 1
+                            if depth == 0:
+                                i += 1
+                                break
+                        i += 1
+                continue
+            break
+        return i
+
+    def extract_selection_fields(self, body: str, fragments: dict[str, str],
+                                 prefix: str = '', visited: set | None = None) -> list[str]:
+        """Recursively walk a GraphQL selection set, returning dotted field paths.
+
+        Fragment spreads (`...FragmentName`) are expanded inline if their
+        definition was found in the same document. Inline fragments
+        (`... on Type { ... }`) are flattened into the parent selection.
+        """
+        if visited is None:
+            visited = set()
+
+        fields: list[str] = []
+        i = 0
+        n = len(body)
+
+        while i < n:
+            c = body[i]
+
+            if c in ' \t\r\n,':
+                i += 1
+                continue
+
+            if body[i:i + 3] == '...':
+                i += 3
+                while i < n and body[i] in ' \t\r\n':
+                    i += 1
+
+                m_on = re.match(r'on\s+[A-Za-z_][A-Za-z0-9_]*', body[i:])
+                if m_on:
+                    i += m_on.end()
+                    i = self._skip_directives(body, i, n)
+                    if i < n and body[i] == '{':
+                        close = self.find_matching_brace(body, i)
+                        if close != -1:
+                            fields.extend(self.extract_selection_fields(body[i + 1:close], fragments, prefix, visited))
+                            i = close + 1
+                        else:
+                            i = n
+                    continue
+
+                m_name = re.match(r'[A-Za-z_][A-Za-z0-9_]*', body[i:])
+                if m_name:
+                    frag_name = m_name.group(0)
+                    i += m_name.end()
+                    if frag_name in fragments and frag_name not in visited:
+                        visited.add(frag_name)
+                        fields.extend(self.extract_selection_fields(fragments[frag_name], fragments, prefix, visited))
+                        visited.discard(frag_name)
+                    else:
+                        fields.append(f"{prefix}...{frag_name}" if prefix else f"...{frag_name}")
+                    i = self._skip_directives(body, i, n)
+                continue
+
+            if c == '}':
+                i += 1
+                continue
+
+            m = FIELD_RE.match(body[i:])
+            if not m:
+                i += 1
+                continue
+
+            field_name = m.group(2) or m.group(3)
+            i += m.end()
+            full_name = f"{prefix}.{field_name}" if prefix else field_name
+            fields.append(full_name)
+
+            while i < n and body[i] in ' \t\r\n':
+                i += 1
+
+            if i < n and body[i] == '(':
+                depth = 0
+                while i < n:
+                    if body[i] == '(':
+                        depth += 1
+                    elif body[i] == ')':
+                        depth -= 1
+                        if depth == 0:
+                            i += 1
+                            break
+                    i += 1
+
+            i = self._skip_directives(body, i, n)
+
+            if i < n and body[i] == '{':
+                close = self.find_matching_brace(body, i)
+                if close != -1:
+                    fields.extend(self.extract_selection_fields(body[i + 1:close], fragments, full_name, visited))
+                    i = close + 1
+                else:
+                    i = n
+
+        return fields
+    
+    def parse_graphql_document(self, query_text: str) -> dict | None:
+        """Parse a GraphQL document string into operation type/name, variables, and fields."""
+        text = re.sub(r'#[^\n]*', '', query_text)
+
+        fragments = self.extract_fragments(text)
+
+        op_match = OPERATION_RE.search(text)
+        if op_match:
+            op_type = op_match.group(1).lower()
+            op_name = op_match.group(2)
+            variables_decl = op_match.group(4) or ''
+            body_start = op_match.end() - 1
+        else:
+            brace_idx = text.find('{')
+            if brace_idx == -1:
+                return None
+            op_type = 'query'
+            op_name = None
+            variables_decl = ''
+            body_start = brace_idx
+
+        body_end = self.find_matching_brace(text, body_start)
+        if body_end == -1:
+            return None
+        body = text[body_start + 1:body_end]
+
+        variables = {m.group(1): m.group(2) for m in VAR_DECL_RE.finditer(variables_decl)}
+        fields = self.extract_selection_fields(body, fragments)
+
+        return {
+            'operation_type': op_type,
+            'operation_name': op_name,
+            'variables': variables,
+            'fields': fields,
+        }
 
     def _parse_response(self, item) -> ParsedResponse:
         """Parses the response from Base64 or plaintext to the ParsedRequest dataclass."""
@@ -235,7 +478,7 @@ class Parser:
         headers = dict(email.message_from_string(msg).items())
         body = parsed.split(split_char*2, 1)[1]
 
-        return self.ParsedRequest(method, endpoint, headers, body=body or None)
+        return self.ParsedRequest(method=method, endpoint=endpoint, headers=headers, body=body or None, url="")
 
 
     def _map_endpoint(self, request: ParsedRequest, response: ParsedResponse) -> dict:
@@ -264,7 +507,7 @@ class Parser:
         When multiple paths share a template their method→parameter dicts are
         merged (union), so no discovered fields are lost.
         """
-        template_map = _cluster_paths(list(raw_endpoints))  # {template: [orig_paths]}
+        template_map = _cluster_paths(list(raw_endpoints))
 
         aggregated: dict = {}
         for template, originals in template_map.items():
@@ -276,11 +519,13 @@ class Parser:
 
         return aggregated
 
-    def _gather_endpoints(self, xml_file_path: LiteralString | str | bytes) -> dict:
+    def _gather_endpoints(self, xml_file_path: LiteralString | str | bytes) -> tuple[dict, list]:
         """Gathers endpoints and the request/response data from the XML requests file."""
         endpoints = {}
 
         tree = ET.parse(xml_file_path)
+
+        graphql_ops = []
 
         for item in tree.getroot().findall("item"):
             for request in item.findall("request"):
@@ -288,6 +533,7 @@ class Parser:
                     continue
 
                 parsed_request = self._parse_request(request)
+                parsed_request.url = item.find("url").text
 
             for response in item.findall("response"):
                 if response.text is None:
@@ -298,12 +544,52 @@ class Parser:
             if parsed_response.status_code == HTTPStatus.NOT_FOUND:
                 continue
 
+            gql = self._is_graphql(parsed_request, parsed_response)
+
+            if gql:
+                graphql_ops.append(gql)
+
             endpoints.update(self._map_endpoint(parsed_request, parsed_response))
 
-
         aggregated = self._aggregate_endpoints(endpoints)
-        return aggregated
 
+        return aggregated, graphql_ops
+
+    def build_tree(self, paths):
+        tree = {}
+        for path in paths:
+            node = tree
+            for part in path.split("."):
+                node = node.setdefault(part, {})
+
+
+
+        return tree
+
+    def create_nodes_from_tree(self, tree: dict, node_type: str = "graphQLField", parent: str = None,
+                               parent_type: str = None, path: str = "") -> list[dict]:
+
+        new_nodes = []
+        known_nodes = self.ptjsonlib.json_object["results"]["nodes"]
+
+        for name, children in tree.items():
+            full_path = f"{path}.{name}" if path else name
+            properties = {"name": name, "path": full_path, "isLeaf": not bool(children)}
+
+            node_object = self.ptjsonlib.create_node_object(node_type, parent_type, parent, properties, new_nodes, known_nodes)
+            if type(node_object) is not str:
+                self.ptjsonlib.add_node(node_object)
+                new_nodes.append(node_object)
+                node_key = node_object["key"]
+            else:
+                node_key = node_object
+
+            if children:
+                new_nodes.extend(
+                    self.create_nodes_from_tree(children, node_type, node_key, node_type, full_path)
+                )
+
+        return new_nodes
 
     def run(self) -> None:
         """
@@ -317,7 +603,7 @@ class Parser:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         requests_file_path = os.path.join(current_dir, self.args.requests_file)
 
-        found_endpoints = self._gather_endpoints(requests_file_path)
+        found_endpoints, graphql_ops = self._gather_endpoints(requests_file_path)
 
         root: dict = self.ptjsonlib.create_node_object(
             "webApi",
@@ -358,6 +644,10 @@ class Parser:
                         }
                     )
                     nodes.append(parameter_node)
+
+        for operation in graphql_ops:
+            tree = self.build_tree(operation["fields"])
+            self.create_nodes_from_tree(tree, node_type="GraphQL")
 
         self.ptjsonlib.add_nodes(nodes)
 
